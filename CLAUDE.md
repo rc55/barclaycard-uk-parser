@@ -28,6 +28,7 @@ DD Mon Description £Amount[CR]
 ### Payment Types Recognised
 - "Payment, Thank You" — manual payments
 - "Payment By Direct Debit" — automatic payments
+- "Payrev Payment Reversal" — payment reversals (negative, with -£ prefix)
 
 ### Validation Logic
 Three checks against statement summary figures:
@@ -37,6 +38,7 @@ Three checks against statement summary figures:
 
 ### Known Edge Cases Handled
 - Credit balances (£X.XX**CR** suffix)
+- Negative amounts (-£X.XX prefix for payment reversals)
 - Duplicate legitimate transactions (allows up to 2 identical)
 - Multi-line merchant names
 - Foreign currency with exchange rates

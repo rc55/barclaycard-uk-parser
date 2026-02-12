@@ -56,23 +56,28 @@ def parse_transaction_line(line):
     Parse a transaction line into components.
     Returns dict with date, description, amount, is_credit, or None if not a transaction.
     """
-    # Transaction pattern: DD Mon[optional space]Description £Amount[CR]
+    # Transaction pattern: DD Mon[optional space]Description [-]£Amount[CR]
     # The PDF extraction often removes the space between date and description
     # Examples:
     #   04 NovSQ *Exeter Science Park L, Exeter£4.45
     #   06 NovFS *Illformed.com, Fsprg.UK£60.00CR
     #   05 Nov Payment, Thank You£34.99
+    #   17 MayPayrev Payment Reversal-£1,900.68  (negative amount)
     
-    # Pattern handles optional space after month and before £
-    pattern = r'^(\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec))\s*(.+?)£([\d,]+\.\d{2})(CR)?$'
+    # Pattern handles optional space after month, optional negative sign before £
+    pattern = r'^(\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec))\s*(.+?)(-)?£([\d,]+\.\d{2})(CR)?$'
     
     match = re.match(pattern, line.strip())
     if match:
         date_str = match.group(1)
         description = match.group(2).strip()
-        amount_str = match.group(3).replace(',', '')
+        is_negative = match.group(3) == '-'
+        amount_str = match.group(4).replace(',', '')
         amount = float(amount_str)
-        is_credit = match.group(4) == 'CR'
+        is_credit_suffix = match.group(5) == 'CR'
+        
+        # Either CR suffix or negative prefix indicates credit
+        is_credit = is_credit_suffix or is_negative
         
         # Clean up description - remove trailing 'e' which appears for contactless
         # Also clean up truncated descriptions
@@ -205,10 +210,14 @@ def parse_statement(pdf_path, statement_year=None):
                     
                     if txn:
                         # Payments are credits (money coming in to pay off balance)
-                        # Handle both "Payment, Thank You" and "Payment By Direct Debit"
+                        # Handle "Payment, Thank You", "Payment By Direct Debit", and "Payrev Payment Reversal"
                         if 'Payment' in txn['description'] and ('Thank You' in txn['description'] or 'Direct Debit' in txn['description']):
                             txn['is_credit'] = True
                             txn['type'] = 'payment'
+                        elif 'Payrev' in txn['description'] and 'Payment Reversal' in txn['description']:
+                            # Payment reversal - this is a negative payment (reverses a previous payment)
+                            # It should be treated as a debit (adds back to balance)
+                            txn['type'] = 'payment_reversal'
                         else:
                             txn['type'] = 'refund' if txn['is_credit'] else 'purchase'
                         
@@ -350,6 +359,10 @@ def validate_extraction(parsed_data, tolerance=0.01):
     
     # Calculate totals from extracted transactions
     total_payments = df[df['type'] == 'payment']['amount'].sum()
+    # Payment reversals subtract from the payments total
+    total_payment_reversals = df[df['type'] == 'payment_reversal']['amount'].sum()
+    net_payments = total_payments - total_payment_reversals
+    
     total_purchases = df[df['type'] == 'purchase']['amount'].sum()
     total_refunds = df[df['type'] == 'refund']['amount'].sum()
     
@@ -358,7 +371,7 @@ def validate_extraction(parsed_data, tolerance=0.01):
     calculated_new_activity = total_purchases - total_refunds
     
     results['summary'] = {
-        'extracted_payments': total_payments,
+        'extracted_payments': net_payments,
         'extracted_purchases': total_purchases,
         'extracted_refunds': total_refunds,
         'extracted_new_activity': calculated_new_activity,
@@ -368,15 +381,15 @@ def validate_extraction(parsed_data, tolerance=0.01):
     # Check 1: Payments match
     if 'stated_payments' in metadata:
         stated = metadata['stated_payments']
-        diff = abs(total_payments - stated)
+        diff = abs(net_payments - stated)
         passed = diff <= tolerance
         results['checks'].append({
             'name': 'payments_match',
             'passed': passed,
             'stated': stated,
-            'extracted': total_payments,
+            'extracted': net_payments,
             'difference': diff,
-            'message': f"Payments: stated £{stated:.2f} vs extracted £{total_payments:.2f} (diff: £{diff:.2f})"
+            'message': f"Payments: stated £{stated:.2f} vs extracted £{net_payments:.2f} (diff: £{diff:.2f})"
         })
         if not passed:
             results['valid'] = False
@@ -409,15 +422,15 @@ def validate_extraction(parsed_data, tolerance=0.01):
         interest = metadata.get('stated_interest', 0)
         charges = metadata.get('stated_charges', 0)
         
-        # Calculate expected new balance
-        calculated_new = prev - total_payments + total_purchases - total_refunds + interest + charges
+        # Calculate expected new balance (use net_payments which accounts for reversals)
+        calculated_new = prev - net_payments + total_purchases - total_refunds + interest + charges
         diff = abs(calculated_new - stated_new)
         passed = diff <= tolerance
         
         results['checks'].append({
             'name': 'balance_equation',
             'passed': passed,
-            'formula': f"£{prev:.2f} - £{total_payments:.2f} + £{total_purchases:.2f} - £{total_refunds:.2f} + £{interest:.2f} + £{charges:.2f}",
+            'formula': f"£{prev:.2f} - £{net_payments:.2f} + £{total_purchases:.2f} - £{total_refunds:.2f} + £{interest:.2f} + £{charges:.2f}",
             'calculated_new_balance': calculated_new,
             'stated_new_balance': stated_new,
             'difference': diff,

@@ -476,6 +476,9 @@
                                 (txn.description.includes('Thank You') || txn.description.includes('Direct Debit'))) {
                                 txn.is_credit = true;
                                 txn.type = 'payment';
+                            } else if (txn.description.includes('Payrev') && txn.description.includes('Payment Reversal')) {
+                                // Payment reversal - reverses a previous payment
+                                txn.type = 'payment_reversal';
                             } else {
                                 txn.type = txn.is_credit ? 'refund' : 'purchase';
                             }
@@ -591,23 +594,28 @@
         }
         
         function parseTransactionLine(line, year) {
-            // Match: DD Mon Description £Amount[CR]
+            // Match: DD Mon Description [-]£Amount[CR]
             // Allow flexible spacing - pdf.js may join or split text differently
-            const match = line.match(/^(\d{1,2}\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec))\s*(.+?)\s*£\s*([\d,]+\.\d{2})\s*(CR)?$/);
+            // Negative amounts have -£ prefix (e.g., payment reversals)
+            const match = line.match(/^(\d{1,2}\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec))\s*(.+?)\s*(-)?£\s*([\d,]+\.\d{2})\s*(CR)?$/);
             
             if (!match) return null;
             
-            let [_, date, description, amount, cr] = match;
+            let [_, date, description, negative, amount, cr] = match;
             
             // Normalize the date to have a space
             date = date.replace(/^(\d{1,2})([A-Z])/, '$1 $2');
+            
+            // Either CR suffix or negative prefix indicates credit
+            const isCredit = cr === 'CR' || negative === '-';
             
             return {
                 date: date,
                 full_date: `${date} ${year}`,
                 description: description.trim().replace(/\s+e\s*$/, '').replace(/\s+$/, ''),
                 amount: roundMoney(parseFloat(amount.replace(/,/g, ''))),
-                is_credit: cr === 'CR',
+                is_credit: isCredit,
+                is_negative: negative === '-',
                 extra_info: ''
             };
         }
@@ -633,7 +641,9 @@
             let valid = true;
             
             // Calculate totals with rounding
-            const payments = roundMoney(transactions.filter(t => t.type === 'payment').reduce((sum, t) => sum + t.amount, 0));
+            const totalPayments = roundMoney(transactions.filter(t => t.type === 'payment').reduce((sum, t) => sum + t.amount, 0));
+            const paymentReversals = roundMoney(transactions.filter(t => t.type === 'payment_reversal').reduce((sum, t) => sum + t.amount, 0));
+            const payments = roundMoney(totalPayments - paymentReversals);  // Net payments
             const purchases = roundMoney(transactions.filter(t => t.type === 'purchase').reduce((sum, t) => sum + t.amount, 0));
             const refunds = roundMoney(transactions.filter(t => t.type === 'refund').reduce((sum, t) => sum + t.amount, 0));
             
