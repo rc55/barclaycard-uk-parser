@@ -1,0 +1,896 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Barclaycard Statement Parser</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+            color: #333;
+        }
+        
+        h1 {
+            color: #0a4e8c;
+            margin-bottom: 5px;
+        }
+        
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+        }
+        
+        .privacy-notice {
+            background: #e8f4e8;
+            border: 1px solid #4a4;
+            border-radius: 8px;
+            padding: 12px 16px;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+        
+        .privacy-notice strong {
+            color: #2a2;
+        }
+        
+        .drop-zone {
+            border: 3px dashed #ccc;
+            border-radius: 12px;
+            padding: 60px 20px;
+            text-align: center;
+            background: #fff;
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+        
+        .drop-zone:hover, .drop-zone.drag-over {
+            border-color: #0a4e8c;
+            background: #f0f7ff;
+        }
+        
+        .drop-zone input {
+            display: none;
+        }
+        
+        .drop-zone p {
+            margin: 10px 0;
+            color: #666;
+        }
+        
+        .drop-zone .icon {
+            font-size: 48px;
+            margin-bottom: 10px;
+        }
+        
+        .results {
+            margin-top: 30px;
+        }
+        
+        .statement-card {
+            background: #fff;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .statement-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        
+        .statement-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #0a4e8c;
+        }
+        
+        .validation-badge {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 500;
+        }
+        
+        .validation-badge.passed {
+            background: #d4edda;
+            color: #155724;
+        }
+        
+        .validation-badge.failed {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        
+        .metadata-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .metadata-item {
+            background: #f8f9fa;
+            padding: 12px;
+            border-radius: 6px;
+        }
+        
+        .metadata-item label {
+            display: block;
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 4px;
+        }
+        
+        .metadata-item .value {
+            font-size: 18px;
+            font-weight: 600;
+        }
+        
+        .validation-details {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 15px;
+            font-family: monospace;
+            font-size: 13px;
+        }
+        
+        .validation-details .check {
+            margin: 5px 0;
+        }
+        
+        .validation-details .check.pass {
+            color: #155724;
+        }
+        
+        .validation-details .check.fail {
+            color: #721c24;
+        }
+        
+        .transactions-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+        
+        .transactions-table th {
+            background: #0a4e8c;
+            color: #fff;
+            padding: 10px 8px;
+            text-align: left;
+            position: sticky;
+            top: 0;
+        }
+        
+        .transactions-table td {
+            padding: 8px;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .transactions-table tr:hover {
+            background: #f8f9fa;
+        }
+        
+        .transactions-table .amount {
+            text-align: right;
+            font-family: monospace;
+        }
+        
+        .transactions-table .payment {
+            color: #155724;
+        }
+        
+        .transactions-table .refund {
+            color: #155724;
+        }
+        
+        .table-container {
+            max-height: 400px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+        }
+        
+        .actions {
+            margin-top: 15px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        
+        button {
+            background: #0a4e8c;
+            color: #fff;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.2s;
+        }
+        
+        button:hover {
+            background: #083a6a;
+        }
+        
+        button.secondary {
+            background: #6c757d;
+        }
+        
+        button.secondary:hover {
+            background: #545b62;
+        }
+        
+        .combined-actions {
+            background: #fff;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 40px;
+        }
+        
+        .loading .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #0a4e8c;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 15px;
+        }
+        
+        .extra-info {
+            font-size: 12px;
+            color: #666;
+            font-style: italic;
+        }
+        
+        @media (max-width: 600px) {
+            .transactions-table {
+                font-size: 12px;
+            }
+            
+            .transactions-table th, .transactions-table td {
+                padding: 6px 4px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <h1>Barclaycard Statement Parser</h1>
+    <p class="subtitle">Extract transactions from PDF statements — 100% local processing</p>
+    
+    <div class="privacy-notice">
+        <strong>🔒 Privacy:</strong> All processing happens in your browser. Your PDF files are never uploaded anywhere — they stay on your device.
+    </div>
+    
+    <div class="drop-zone" id="dropZone">
+        <div class="icon">📄</div>
+        <p><strong>Drop PDF statements here</strong></p>
+        <p>or click to select files</p>
+        <input type="file" id="fileInput" accept=".pdf" multiple>
+    </div>
+    
+    <div class="results" id="results"></div>
+    
+    <script>
+        // Set up pdf.js worker
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        
+        // Helper to avoid floating point errors with money
+        function roundMoney(value) {
+            return Math.round(value * 100) / 100;
+        }
+        
+        // State
+        let parsedStatements = [];
+        
+        // DOM elements
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const resultsDiv = document.getElementById('results');
+        
+        // Event listeners
+        dropZone.addEventListener('click', () => fileInput.click());
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('drag-over');
+        });
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('drag-over');
+        });
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('drag-over');
+            handleFiles(e.dataTransfer.files);
+        });
+        fileInput.addEventListener('change', () => {
+            handleFiles(fileInput.files);
+        });
+        
+        async function handleFiles(files) {
+            const pdfFiles = Array.from(files).filter(f => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'));
+            
+            if (pdfFiles.length === 0) {
+                alert('Please select PDF files');
+                return;
+            }
+            
+            resultsDiv.innerHTML = '<div class="loading"><div class="spinner"></div>Processing statements...</div>';
+            parsedStatements = [];
+            
+            for (const file of pdfFiles) {
+                try {
+                    const result = await parseStatement(file);
+                    result.filename = file.name;
+                    parsedStatements.push(result);
+                } catch (error) {
+                    parsedStatements.push({
+                        filename: file.name,
+                        error: error.message
+                    });
+                }
+            }
+            
+            renderResults();
+        }
+        
+        async function parseStatement(file) {
+            const arrayBuffer = await file.arrayBuffer();
+            const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+            
+            // Extract text with positions from all pages
+            const pages = [];
+            for (let i = 1; i <= pdf.numPages; i++) {
+                const page = await pdf.getPage(i);
+                const textContent = await page.getTextContent();
+                const viewport = page.getViewport({ scale: 1.0 });
+                
+                // Transform coordinates and collect items
+                const items = textContent.items.map(item => {
+                    const tx = pdfjsLib.Util.transform(viewport.transform, item.transform);
+                    return {
+                        text: item.str,
+                        x: tx[4],
+                        y: viewport.height - tx[5], // Flip Y coordinate
+                        width: item.width,
+                        height: item.height
+                    };
+                });
+                
+                pages.push({
+                    pageNum: i,
+                    width: viewport.width,
+                    height: viewport.height,
+                    items: items,
+                    text: items.map(i => i.text).join(' ')
+                });
+            }
+            
+            // Parse metadata from page 1
+            const metadata = parseMetadata(pages[0]);
+            
+            // Parse transactions from subsequent pages
+            const transactions = [];
+            const columnSplit = 295;
+            
+            for (let i = 1; i < pages.length; i++) {
+                const page = pages[i];
+                
+                // Check if this page has transactions
+                if (!page.text.includes('Your transactions') && 
+                    !/\d{2}\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)/.test(page.text)) {
+                    continue;
+                }
+                
+                // Find "Ways to pay" cutoff
+                let yCutoff = null;
+                if (page.text.includes('Ways to pay')) {
+                    for (const item of page.items) {
+                        if (item.text === 'Ways' && item.x < 100) {
+                            yCutoff = item.y - 5;
+                            break;
+                        }
+                    }
+                }
+                
+                // Extract columns
+                const leftText = extractColumnText(page, 0, columnSplit, yCutoff);
+                const rightText = extractColumnText(page, columnSplit, page.width, yCutoff);
+                
+                // Parse transactions from each column
+                for (const columnText of [leftText, rightText]) {
+                    const lines = columnText.split('\n');
+                    let i = 0;
+                    
+                    while (i < lines.length) {
+                        const line = lines[i].trim();
+                        
+                        if (!line || line.startsWith('Page ') || line.startsWith('Ways to pay')) {
+                            i++;
+                            continue;
+                        }
+                        
+                        const txn = parseTransactionLine(line, metadata.year);
+                        
+                        if (txn) {
+                            // Check for continuation lines
+                            let extraInfo = [];
+                            let j = i + 1;
+                            
+                            while (j < lines.length) {
+                                const nextLine = lines[j].trim();
+                                if (!nextLine || parseTransactionLine(nextLine, metadata.year)) {
+                                    break;
+                                }
+                                if (!nextLine.startsWith('Page ') && 
+                                    !nextLine.startsWith('Your ') &&
+                                    !nextLine.startsWith('Transactions') &&
+                                    !nextLine.startsWith('How you') &&
+                                    !nextLine.startsWith('Promotional') &&
+                                    !nextLine.startsWith('Interest and') &&
+                                    nextLine.length > 1) {
+                                    extraInfo.push(nextLine);
+                                }
+                                j++;
+                            }
+                            
+                            if (extraInfo.length > 0) {
+                                txn.extra_info = extraInfo.join(' | ').replace(/\s*e\s*$/, '').trim();
+                            }
+                            
+                            // Classify transaction
+                            if (txn.description.includes('Payment') && 
+                                (txn.description.includes('Thank You') || txn.description.includes('Direct Debit'))) {
+                                txn.is_credit = true;
+                                txn.type = 'payment';
+                            } else {
+                                txn.type = txn.is_credit ? 'refund' : 'purchase';
+                            }
+                            
+                            transactions.push(txn);
+                            i = j;
+                        } else {
+                            i++;
+                        }
+                    }
+                }
+            }
+            
+            // Deduplicate (allow up to 2 identical transactions)
+            const deduped = deduplicateTransactions(transactions);
+            
+            // Validate
+            const validation = validateExtraction(metadata, deduped);
+            
+            return {
+                metadata,
+                transactions: deduped,
+                validation
+            };
+        }
+        
+        function extractColumnText(page, xMin, xMax, yMax) {
+            let items = page.items.filter(item => item.x >= xMin && item.x < xMax);
+            if (yMax) {
+                items = items.filter(item => item.y < yMax);
+            }
+            
+            if (items.length === 0) return '';
+            
+            // Group by line (y-position with larger tolerance to handle slight misalignment)
+            // Use 5px tolerance instead of 3px
+            const lines = {};
+            for (const item of items) {
+                const yKey = Math.round(item.y / 5) * 5;
+                if (!lines[yKey]) lines[yKey] = [];
+                lines[yKey].push(item);
+            }
+            
+            // Sort each line by x and build text
+            const result = [];
+            for (const yKey of Object.keys(lines).map(Number).sort((a, b) => a - b)) {
+                const lineItems = lines[yKey].sort((a, b) => a.x - b.x);
+                // Join with awareness of spacing - add space if gap > 3px
+                let lineText = '';
+                for (let i = 0; i < lineItems.length; i++) {
+                    const item = lineItems[i];
+                    if (i > 0) {
+                        const prevItem = lineItems[i - 1];
+                        const gap = item.x - (prevItem.x + (prevItem.width || 0));
+                        if (gap > 3) {
+                            lineText += ' ';
+                        }
+                    }
+                    lineText += item.text;
+                }
+                result.push(lineText);
+            }
+            
+            return result.join('\n');
+        }
+        
+        function parseMetadata(page) {
+            const text = page.text;
+            const metadata = { year: new Date().getFullYear() };
+            
+            // Statement date
+            const dateMatch = text.match(/(\d{2})\s+(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{4})/);
+            if (dateMatch) {
+                metadata.statement_date = `${dateMatch[1]} ${dateMatch[2]} ${dateMatch[3]}`;
+                metadata.year = parseInt(dateMatch[3]);
+            }
+            
+            // Balances
+            const prevMatch = text.match(/Your previous balance[:\s]+£([\d,]+\.\d{2})(CR)?/);
+            if (prevMatch) {
+                metadata.previous_balance = parseFloat(prevMatch[1].replace(/,/g, ''));
+                if (prevMatch[2] === 'CR') metadata.previous_balance = -metadata.previous_balance;
+            }
+            
+            const newMatch = text.match(/Your new balance[:\s]+£([\d,]+\.\d{2})(CR)?/);
+            if (newMatch) {
+                metadata.new_balance = parseFloat(newMatch[1].replace(/,/g, ''));
+                if (newMatch[2] === 'CR') metadata.new_balance = -metadata.new_balance;
+            }
+            
+            // Summary figures
+            const paymentsMatch = text.match(/Payments towards your account[:\s]+£([\d,]+\.\d{2})/);
+            if (paymentsMatch) {
+                metadata.stated_payments = parseFloat(paymentsMatch[1].replace(/,/g, ''));
+            }
+            
+            const activityMatch = text.match(/Your new activity[:\s]+£([\d,]+\.\d{2})/);
+            if (activityMatch) {
+                metadata.stated_new_activity = parseFloat(activityMatch[1].replace(/,/g, ''));
+            }
+            
+            const interestMatch = text.match(/Interest charged[:\s]+£([\d,]+\.\d{2})/);
+            if (interestMatch) {
+                metadata.stated_interest = parseFloat(interestMatch[1].replace(/,/g, ''));
+            }
+            
+            const chargesMatch = text.match(/Other charges[:\s]+£([\d,]+\.\d{2})/);
+            if (chargesMatch) {
+                metadata.stated_charges = parseFloat(chargesMatch[1].replace(/,/g, ''));
+            }
+            
+            return metadata;
+        }
+        
+        function parseTransactionLine(line, year) {
+            // Match: DD Mon Description £Amount[CR]
+            // Allow flexible spacing - pdf.js may join or split text differently
+            const match = line.match(/^(\d{1,2}\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec))\s*(.+?)\s*£\s*([\d,]+\.\d{2})\s*(CR)?$/);
+            
+            if (!match) return null;
+            
+            let [_, date, description, amount, cr] = match;
+            
+            // Normalize the date to have a space
+            date = date.replace(/^(\d{1,2})([A-Z])/, '$1 $2');
+            
+            return {
+                date: date,
+                full_date: `${date} ${year}`,
+                description: description.trim().replace(/\s+e\s*$/, '').replace(/\s+$/, ''),
+                amount: roundMoney(parseFloat(amount.replace(/,/g, ''))),
+                is_credit: cr === 'CR',
+                extra_info: ''
+            };
+        }
+        
+        function deduplicateTransactions(transactions) {
+            const counts = {};
+            const result = [];
+            
+            for (const txn of transactions) {
+                const key = `${txn.date}|${txn.description}|${txn.amount}|${txn.is_credit}`;
+                counts[key] = (counts[key] || 0) + 1;
+                
+                if (counts[key] <= 2) {
+                    result.push(txn);
+                }
+            }
+            
+            return result;
+        }
+        
+        function validateExtraction(metadata, transactions) {
+            const checks = [];
+            let valid = true;
+            
+            // Calculate totals with rounding
+            const payments = roundMoney(transactions.filter(t => t.type === 'payment').reduce((sum, t) => sum + t.amount, 0));
+            const purchases = roundMoney(transactions.filter(t => t.type === 'purchase').reduce((sum, t) => sum + t.amount, 0));
+            const refunds = roundMoney(transactions.filter(t => t.type === 'refund').reduce((sum, t) => sum + t.amount, 0));
+            
+            // Check payments
+            if (metadata.stated_payments !== undefined) {
+                const diff = roundMoney(Math.abs(metadata.stated_payments - payments));
+                const passed = diff < 0.01;
+                if (!passed) valid = false;
+                checks.push({
+                    name: 'Payments',
+                    passed,
+                    stated: metadata.stated_payments,
+                    extracted: payments,
+                    diff
+                });
+            }
+            
+            // Check new activity
+            if (metadata.stated_new_activity !== undefined) {
+                const interest = metadata.stated_interest || 0;
+                const charges = metadata.stated_charges || 0;
+                const newActivity = roundMoney(purchases - refunds + interest + charges);
+                const diff = roundMoney(Math.abs(metadata.stated_new_activity - newActivity));
+                const passed = diff < 0.01;
+                if (!passed) valid = false;
+                checks.push({
+                    name: 'New activity',
+                    passed,
+                    stated: metadata.stated_new_activity,
+                    extracted: newActivity,
+                    diff
+                });
+            }
+            
+            // Check balance equation
+            if (metadata.previous_balance !== undefined && metadata.new_balance !== undefined) {
+                const interest = metadata.stated_interest || 0;
+                const charges = metadata.stated_charges || 0;
+                const calculated = roundMoney(metadata.previous_balance - payments + purchases - refunds + interest + charges);
+                const diff = roundMoney(Math.abs(calculated - metadata.new_balance));
+                const passed = diff < 0.01;
+                if (!passed) valid = false;
+                checks.push({
+                    name: 'Balance',
+                    passed,
+                    stated: metadata.new_balance,
+                    extracted: calculated,
+                    diff
+                });
+            }
+            
+            return {
+                valid,
+                checks,
+                summary: { payments, purchases, refunds, count: transactions.length }
+            };
+        }
+        
+        function renderResults() {
+            if (parsedStatements.length === 0) {
+                resultsDiv.innerHTML = '';
+                return;
+            }
+            
+            let html = '';
+            
+            // Combined actions if multiple statements
+            if (parsedStatements.filter(s => !s.error).length > 1) {
+                html += `
+                    <div class="combined-actions">
+                        <strong>All Statements:</strong>
+                        <div class="actions">
+                            <button onclick="downloadCombinedCSV()">Download Combined CSV</button>
+                            <button onclick="downloadCombinedJSON()" class="secondary">Download Combined JSON</button>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            // Individual statement cards
+            for (const statement of parsedStatements) {
+                if (statement.error) {
+                    html += `
+                        <div class="statement-card">
+                            <div class="statement-header">
+                                <span class="statement-title">${escapeHtml(statement.filename)}</span>
+                                <span class="validation-badge failed">Error</span>
+                            </div>
+                            <div class="error">${escapeHtml(statement.error)}</div>
+                        </div>
+                    `;
+                    continue;
+                }
+                
+                const { metadata, transactions, validation } = statement;
+                const validClass = validation.valid ? 'passed' : 'failed';
+                const validText = validation.valid ? '✓ Validated' : '✗ Validation Failed';
+                
+                html += `
+                    <div class="statement-card">
+                        <div class="statement-header">
+                            <span class="statement-title">${escapeHtml(statement.filename)}</span>
+                            <span class="validation-badge ${validClass}">${validText}</span>
+                        </div>
+                        
+                        <div class="metadata-grid">
+                            <div class="metadata-item">
+                                <label>Statement Date</label>
+                                <div class="value">${escapeHtml(metadata.statement_date || 'Unknown')}</div>
+                            </div>
+                            <div class="metadata-item">
+                                <label>Previous Balance</label>
+                                <div class="value">£${(metadata.previous_balance || 0).toFixed(2)}</div>
+                            </div>
+                            <div class="metadata-item">
+                                <label>New Balance</label>
+                                <div class="value">£${(metadata.new_balance || 0).toFixed(2)}</div>
+                            </div>
+                            <div class="metadata-item">
+                                <label>Transactions</label>
+                                <div class="value">${transactions.length}</div>
+                            </div>
+                        </div>
+                        
+                        <div class="validation-details">
+                            ${validation.checks.map(c => `
+                                <div class="check ${c.passed ? 'pass' : 'fail'}">
+                                    ${c.passed ? '✓' : '✗'} ${c.name}: stated £${c.stated.toFixed(2)} vs extracted £${c.extracted.toFixed(2)} (diff: £${c.diff.toFixed(2)})
+                                </div>
+                            `).join('')}
+                        </div>
+                        
+                        <div class="table-container">
+                            <table class="transactions-table">
+                                <thead>
+                                    <tr>
+                                        <th>Date</th>
+                                        <th>Description</th>
+                                        <th>Type</th>
+                                        <th>Amount</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${transactions.map(t => `
+                                        <tr>
+                                            <td>${escapeHtml(t.date)}</td>
+                                            <td>
+                                                ${escapeHtml(t.description)}
+                                                ${t.extra_info ? `<div class="extra-info">${escapeHtml(t.extra_info)}</div>` : ''}
+                                            </td>
+                                            <td>${t.type}</td>
+                                            <td class="amount ${t.type}">${t.type !== 'purchase' ? '-' : ''}£${t.amount.toFixed(2)}</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                        
+                        <div class="actions">
+                            <button onclick="downloadCSV('${escapeHtml(statement.filename)}')">Download CSV</button>
+                            <button onclick="downloadJSON('${escapeHtml(statement.filename)}')" class="secondary">Download JSON</button>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            resultsDiv.innerHTML = html;
+        }
+        
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        function downloadCSV(filename) {
+            const statement = parsedStatements.find(s => s.filename === filename);
+            if (!statement || statement.error) return;
+            
+            const csv = transactionsToCSV(statement.transactions);
+            downloadFile(csv, filename.replace('.pdf', '.csv').replace('.PDF', '.csv'), 'text/csv');
+        }
+        
+        function downloadJSON(filename) {
+            const statement = parsedStatements.find(s => s.filename === filename);
+            if (!statement || statement.error) return;
+            
+            const json = JSON.stringify(statement, null, 2);
+            downloadFile(json, filename.replace('.pdf', '.json').replace('.PDF', '.json'), 'application/json');
+        }
+        
+        function downloadCombinedCSV() {
+            const allTransactions = [];
+            for (const statement of parsedStatements) {
+                if (statement.error) continue;
+                for (const txn of statement.transactions) {
+                    allTransactions.push({
+                        source_file: statement.filename,
+                        ...txn
+                    });
+            }
+            }
+            
+            const csv = transactionsToCSV(allTransactions, true);
+            downloadFile(csv, 'combined_transactions.csv', 'text/csv');
+        }
+        
+        function downloadCombinedJSON() {
+            const data = {
+                statements: parsedStatements.filter(s => !s.error).map(s => ({
+                    filename: s.filename,
+                    metadata: s.metadata,
+                    validation: s.validation,
+                    transaction_count: s.transactions.length
+                })),
+                transactions: parsedStatements.filter(s => !s.error).flatMap(s => 
+                    s.transactions.map(t => ({ source_file: s.filename, ...t }))
+                )
+            };
+            
+            downloadFile(JSON.stringify(data, null, 2), 'combined_statements.json', 'application/json');
+        }
+        
+        function transactionsToCSV(transactions, includeSource = false) {
+            const headers = includeSource 
+                ? ['source_file', 'date', 'full_date', 'description', 'amount', 'type', 'signed_amount', 'extra_info']
+                : ['date', 'full_date', 'description', 'amount', 'type', 'signed_amount', 'extra_info'];
+            
+            const rows = transactions.map(t => {
+                const signedAmount = t.type === 'purchase' ? t.amount : -t.amount;
+                const row = includeSource ? [t.source_file] : [];
+                row.push(
+                    t.date,
+                    t.full_date,
+                    `"${t.description.replace(/"/g, '""')}"`,
+                    t.amount.toFixed(2),
+                    t.type,
+                    signedAmount.toFixed(2),
+                    `"${(t.extra_info || '').replace(/"/g, '""')}"`
+                );
+                return row.join(',');
+            });
+            
+            return [headers.join(','), ...rows].join('\n');
+        }
+        
+        function downloadFile(content, filename, mimeType) {
+            const blob = new Blob([content], { type: mimeType });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+    </script>
+</body>
+</html>
