@@ -218,6 +218,9 @@ def parse_statement(pdf_path, statement_year=None):
                             # Payment reversal - this is a negative payment (reverses a previous payment)
                             # It should be treated as a debit (adds back to balance)
                             txn['type'] = 'payment_reversal'
+                        elif 'Interest On Your' in txn['description'] or 'Interest on your' in txn['description']:
+                            # Interest charges - tracked separately, not part of "new activity"
+                            txn['type'] = 'interest'
                         else:
                             txn['type'] = 'refund' if txn['is_credit'] else 'purchase'
                         
@@ -394,13 +397,12 @@ def validate_extraction(parsed_data, tolerance=0.01):
         if not passed:
             results['valid'] = False
     
-    # Check 2: New activity matches (purchases - refunds + interest + charges)
+    # Check 2: New activity matches (purchases - refunds)
+    # Note: "Your new activity" on the statement is card usage only, NOT including interest/charges
+    # Interest and charges are shown separately and added in the balance equation
     if 'stated_new_activity' in metadata:
         stated = metadata['stated_new_activity']
-        # Add interest and charges if present
-        interest = metadata.get('stated_interest', 0)
-        charges = metadata.get('stated_charges', 0)
-        calculated = calculated_new_activity + interest + charges
+        calculated = calculated_new_activity  # Just purchases - refunds
         diff = abs(calculated - stated)
         passed = diff <= tolerance
         results['checks'].append({

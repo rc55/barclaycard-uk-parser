@@ -479,6 +479,9 @@
                             } else if (txn.description.includes('Payrev') && txn.description.includes('Payment Reversal')) {
                                 // Payment reversal - reverses a previous payment
                                 txn.type = 'payment_reversal';
+                            } else if (txn.description.includes('Interest On Your') || txn.description.includes('Interest on your')) {
+                                // Interest charges - tracked separately
+                                txn.type = 'interest';
                             } else {
                                 txn.type = txn.is_credit ? 'refund' : 'purchase';
                             }
@@ -661,11 +664,9 @@
                 });
             }
             
-            // Check new activity
+            // Check new activity (card usage only, not including interest/charges)
             if (metadata.stated_new_activity !== undefined) {
-                const interest = metadata.stated_interest || 0;
-                const charges = metadata.stated_charges || 0;
-                const newActivity = roundMoney(purchases - refunds + interest + charges);
+                const newActivity = roundMoney(purchases - refunds);  // Just card usage
                 const diff = roundMoney(Math.abs(metadata.stated_new_activity - newActivity));
                 const passed = diff < 0.01;
                 if (!passed) valid = false;
