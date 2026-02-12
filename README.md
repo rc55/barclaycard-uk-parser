@@ -1,6 +1,7 @@
 # Barclaycard Statement Parser
 
 A Python tool to extract transactions from Barclaycard PDF statements into CSV or JSON format.
+Supports statements from January 2026 onwards.
 
 ## Features
 
