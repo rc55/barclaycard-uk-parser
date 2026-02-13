@@ -3,8 +3,13 @@
 A Python tool to extract transactions from Barclaycard PDF statements into CSV or JSON format.
 Supports statements from January 2026 onwards.
 
+A **browser-based version** is also available — no installation required:
+**[Try it in your browser](https://rc55.github.io/barclaycard-uk-parser/barclaycard_parser.html)**
+(All processing happens locally in your browser — no data is uploaded anywhere.)
+
 ## Features
 
+- **Browser-based HTML version** — drag and drop your PDF, no install needed
 - **Accurate extraction** from Barclaycard's two-column PDF layout
 - **Automatic validation** against statement totals (payments, new activity, balance)
 - **Batch processing** for multiple statements
@@ -192,6 +197,10 @@ The CSV output uses UTF-8 encoding. If you see garbled characters in Excel:
 - Statements with foreign currency transactions
 - Statements with credit balances
 - Statements with refunds
+
+## Disclaimer
+
+This tool is provided as-is, with no warranties or guarantees of any kind. It was built by reverse-engineering the PDF layout of Barclaycard UK statements and may not work correctly with all statement formats, edge cases, or future layout changes. Always verify the extracted data against your original statements. The authors accept no responsibility for any errors, omissions, or financial decisions made based on the output of this tool.
 
 ## License
 
